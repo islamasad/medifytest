@@ -8,6 +8,14 @@
     @endif
 
     <div class="form-group">
+        <label>Foto</label>
+        <input type="file" class="form-control" name="foto">
+        @if($method == 'edit' && isset($item->foto) && $item->foto)
+            <img src="{{ asset('storage/' . $item->foto) }}" width="100" class="mt-2">
+        @endif
+    </div>
+
+    <div class="form-group">
         <label>Nama</label>
         <input type="text" class="form-control" name="nama" required  value="{{$item->nama ?? ''}}">
     </div>

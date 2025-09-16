@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MasterItem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class MasterItemsController extends Controller
 {
@@ -23,8 +24,14 @@ class MasterItemsController extends Controller
 
         if (!empty($kode)) $data_search = $data_search->where('kode', $kode);
         if (!empty($nama)) $data_search = $data_search->where('nama', 'LIKE', '%' . $nama . '%');
-        if (!empty($hargamin)) $data_search = $data_search->where('harga_beli', '>=', $hargamin)->where('harga_beli', '<=', $hargamax);
-
+        if (!empty($hargamin) && !empty($hargamax)) {
+            $data_search = $data_search->whereBetween('harga_beli', [$hargamin, $hargamax]);
+        } elseif (!empty($hargamin)) {
+            $data_search = $data_search->where('harga_beli', '>=', $hargamin);
+        } elseif (!empty($hargamax)) {
+            $data_search = $data_search->where('harga_beli', '<=', $hargamax);
+        }
+        
         $data_search = $data_search->select('kode', 'nama', 'jenis', 'harga_beli', 'laba', 'supplier')->orderBy('id')->get();
 
 
@@ -54,26 +61,51 @@ class MasterItemsController extends Controller
 
     public function formSubmit(Request $request, $method, $id = 0)
     {
-        if ($method == 'new') {
-            $data_item = new MasterItem;
-            $kode = MasterItem::count('id');
-            $kode = $kode + 1;
-            $kode = str_pad($kode, 5, '0', STR_PAD_LEFT);
-            sleep(3);
-        } else {
-            $data_item = MasterItem::find($id);
-            $kode = $data_item->kode;
+        try {
+            if ($method == 'new') {
+                $data_item = new MasterItem;
+                $kode = MasterItem::withTrashed()->count() + 1;
+                $kode = str_pad($kode, 5, '0', STR_PAD_LEFT);
+            } else {
+                $data_item = MasterItem::findOrFail($id);
+                $kode = $data_item->kode;
+            }
+
+            // Handle photo removal
+            if ($request->has('remove_photo') && $request->remove_photo) {
+                if ($data_item->foto) {
+                    Storage::delete('public/' . $data_item->foto);
+                    $data_item->foto = null;
+                }
+            }
+            
+            // Handle file upload
+            if ($request->hasFile('foto')) {
+                // Delete old photo if exists
+                if ($method == 'edit' && $data_item->foto) {
+                    Storage::delete('public/' . $data_item->foto);
+                }
+                
+                // Store new photo in storage/app/public/items
+                $path = $request->file('foto')->store('items', 'public');
+                $data_item->foto = $path;
+            }
+
+            $data_item->nama = $request->nama;
+            $data_item->harga_beli = $request->harga_beli;
+            $data_item->laba = $request->laba;
+            $data_item->kode = $kode;
+            $data_item->supplier = $request->supplier;
+            $data_item->jenis = $request->jenis;
+            $data_item->save();
+
+            return redirect('master-items');
+            
+        } catch (\Exception $e) {
+            return redirect()->back()
+                ->withErrors(['general' => 'Terjadi kesalahan sistem: ' . $e->getMessage()])
+                ->withInput();
         }
-
-        $data_item->nama = $request->nama;
-        $data_item->harga_beli = $request->harga_beli;
-        $data_item->laba = $request->laba;
-        $data_item->kode = $kode;
-        $data_item->supplier = $request->supplier;
-        $data_item->jenis = $request->jenis;
-        $data_item->save();
-
-        return redirect('master-items');
     }
 
     public function delete($id)
